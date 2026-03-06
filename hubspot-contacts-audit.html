@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HubSpot Contacts — Dirty Data Audit | Happen Ventures</title>
+<style>
+  :root {
+    --red: #ef4444; --red-light: #fee2e2; --red-dark: #b91c1c;
+    --orange: #f97316; --orange-light: #ffedd5; --orange-dark: #c2410c;
+    --yellow: #eab308; --yellow-light: #fef9c3; --yellow-dark: #a16207;
+    --green: #22c55e; --green-light: #dcfce7; --green-dark: #15803d;
+    --blue: #3b82f6; --blue-light: #eff6ff; --blue-dark: #1d4ed8;
+    --purple: #8b5cf6; --purple-light: #ede9fe; --purple-dark: #6d28d9;
+    --teal: #14b8a6; --teal-light: #ccfbf1;
+    --gray-50: #f9fafb; --gray-100: #f3f4f6; --gray-200: #e5e7eb;
+    --gray-300: #d1d5db; --gray-400: #9ca3af; --gray-500: #6b7280;
+    --gray-600: #4b5563; --gray-700: #374151; --gray-800: #1f2937; --gray-900: #111827;
+    --hs-orange: #ff7a59;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--gray-50); color: var(--gray-800); font-size: 14px; line-height: 1.5; }
+
+  /* ── NAV ── */
+  nav {
+    background: #fff; border-bottom: 1px solid var(--gray-200);
+    padding: 0 32px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 200;
+  }
+  .nav-left { display: flex; align-items: center; gap: 16px; }
+  .nav-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--gray-900); }
+  .nav-logo svg { color: var(--hs-orange); }
+  .nav-divider { width: 1px; height: 20px; background: var(--gray-200); }
+  .nav-title { font-size: 13px; color: var(--gray-600); }
+  .nav-badge { background: var(--hs-orange); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; letter-spacing: 0.04em; }
+  .nav-right { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--gray-400); }
+  .nav-right .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 4px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── TABS ── */
+  .tab-bar {
+    background: #fff; border-bottom: 1px solid var(--gray-200);
+    padding: 0 32px; display: flex; gap: 0; position: sticky; top: 56px; z-index: 100;
+  }
+  .tab {
+    padding: 14px 18px; font-size: 13px; font-weight: 500; color: var(--gray-500);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s; white-space: nowrap;
+  }
+  .tab:hover { color: var(--gray-800); }
+  .tab.active { color: var(--hs-orange); border-bottom-color: var(--hs-orange); font-weight: 600; }
+  .tab-count { display: inline-block; background: var(--gray-100); color: var(--gray-500); font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 99px; margin-left: 5px; }
+  .tab.active .tab-count { background: #fff0ec; color: var(--hs-orange); }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 1240px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  /* ── SECTIONS (tab panels) ── */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* ── PAGE HEADER ── */
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-size: 22px; font-weight: 700; color: var(--gray-900); }
+  .page-header .subtitle { font-size: 13px; color: var(--gray-500); margin-top: 5px; max-width: 640px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 12px; font-size: 12px; color: var(--gray-400); }
+  .meta-row span { display: flex; align-items: center; gap: 5px; }
+
+  /* ── SUMMARY CARDS ── */
+  .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 14px; margin-bottom: 32px; }
+  .stat-card {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 12px;
+    padding: 18px 20px; position: relative; overflow: hidden;
+  }
+  .stat-card::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 12px 12px 0 0;
+  }
+  .stat-card.c-blue::after { background: var(--blue); }
+  .stat-card.c-red::after { background: var(--red); }
+  .stat-card.c-orange::after { background: var(--orange); }
+  .stat-card.c-purple::after { background: var(--purple); }
+  .stat-card.c-yellow::after { background: var(--yellow); }
+  .stat-card.c-green::after { background: var(--green); }
+  .stat-card.c-teal::after { background: var(--teal); }
+  .stat-card.c-gray::after { background: var(--gray-400); }
+  .stat-card .s-label { font-size: 11px; font-weight: 600; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .stat-card .s-value { font-size: 26px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.02em; }
+  .stat-card .s-sub { font-size: 11px; color: var(--gray-400); margin-top: 3px; }
+  .stat-card .s-pct {
+    display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-top: 6px;
+  }
+  .c-red .s-pct { background: var(--red-light); color: var(--red-dark); }
+  .c-orange .s-pct { background: var(--orange-light); color: var(--orange-dark); }
+  .c-purple .s-pct { background: var(--purple-light); color: var(--purple-dark); }
+  .c-yellow .s-pct { background: var(--yellow-light); color: var(--yellow-dark); }
+  .c-teal .s-pct { background: var(--teal-light); color: #0f766e; }
+  .c-green .s-pct { background: var(--green-light); color: var(--green-dark); }
+  .c-gray .s-pct { background: var(--gray-100); color: var(--gray-600); }
+
+  /* ── ISSUE TABLE ── */
+  .issue-table { background: #fff; border: 1px solid var(--gray-200); border-radius: 12px; overflow: hidden; margin-bottom: 28px; }
+  .issue-table-header {
+    display: grid; grid-template-columns: 2.5fr 100px 80px 160px 140px 140px;
+    padding: 10px 20px; background: var(--gray-100);
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--gray-400);
+    border-bottom: 1px solid var(--gray-200); gap: 12px; align-items: center;
+  }
+  .issue-row {
+    display: grid; grid-template-columns: 2.5fr 100px 80px 160px 140px 140px;
+    padding: 16px 20px; border-bottom: 1px solid var(--gray-100); gap: 12px;
+    align-items: center; transition: background 0.1s;
+  }
+  .issue-row:last-child { border-bottom: none; }
+  .issue-row:hover { background: var(--gray-50); }
+  .issue-name { font-weight: 600; font-size: 13px; color: var(--gray-900); }
+  .issue-desc { font-size: 11px; color: var(--gray-400); margin-top: 3px; line-height: 1.4; }
+  .issue-count { font-size: 16px; font-weight: 800; color: var(--gray-900); }
+  .issue-pct-num { font-size: 12px; font-weight: 600; }
+  .pct-red { color: var(--red); }
+  .pct-orange { color: var(--orange); }
+  .pct-purple { color: var(--purple); }
+  .pct-yellow { color: var(--yellow-dark); }
+  .pct-green { color: var(--green-dark); }
+  .bar-wrap { background: var(--gray-100); border-radius: 99px; height: 5px; }
+  .bar { height: 5px; border-radius: 99px; }
+  .bar-red { background: var(--red); }
+  .bar-orange { background: var(--orange); }
+  .bar-purple { background: var(--purple); }
+  .bar-yellow { background: var(--yellow); }
+  .bar-teal { background: var(--teal); }
+  .bar-gray { background: var(--gray-400); }
+
+  /* ── ACTION PILLS ── */
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 99px;
+  }
+  .pill-delete { background: var(--red-light); color: var(--red-dark); }
+  .pill-enrich { background: var(--blue-light); color: var(--blue-dark); }
+  .pill-review { background: var(--yellow-light); color: var(--yellow-dark); }
+  .pill-validate { background: var(--teal-light); color: #0f766e; }
+  .pill-assign { background: var(--purple-light); color: var(--purple-dark); }
+  .pill-segment { background: var(--orange-light); color: var(--orange-dark); }
+
+  /* ── HS LINK BUTTON ── */
+  .hs-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; color: var(--blue-dark);
+    background: var(--blue-light); border: 1px solid #bfdbfe;
+    padding: 5px 10px; border-radius: 6px; text-decoration: none; cursor: pointer;
+    transition: background 0.15s; white-space: nowrap;
+  }
+  .hs-btn:hover { background: #dbeafe; }
+  .hs-btn svg { width: 11px; height: 11px; }
+
+  /* ── 2-COL GRID ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+
+  /* ── PANEL CARDS ── */
+  .panel {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 12px; padding: 22px;
+  }
+  .panel-title { font-size: 14px; font-weight: 700; color: var(--gray-900); margin-bottom: 4px; }
+  .panel-sub { font-size: 12px; color: var(--gray-400); margin-bottom: 16px; }
+
+  /* ── OVERLAP ITEMS ── */
+  .overlap-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--gray-100); }
+  .overlap-item:last-child { border-bottom: none; }
+  .overlap-label { font-size: 13px; color: var(--gray-700); }
+  .overlap-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+  .overlap-count { font-size: 16px; font-weight: 800; color: var(--gray-900); }
+  .overlap-count.red { color: var(--red); }
+  .overlap-count.green { color: var(--green-dark); }
+  .overlap-count.orange { color: var(--orange); }
+
+  /* ── DONUT CHART ── */
+  .donut-container { display: flex; align-items: center; gap: 24px; }
+  .donut-legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .leg-text { font-size: 12px; color: var(--gray-600); flex: 1; }
+  .leg-num { font-size: 12px; font-weight: 700; color: var(--gray-900); }
+
+  /* ── SECTION HEADERS ── */
+  .sh { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; gap: 16px; }
+  .sh h2 { font-size: 16px; font-weight: 700; color: var(--gray-900); }
+  .sh p { font-size: 12px; color: var(--gray-500); margin-top: 3px; }
+
+  /* ── STEPS ── */
+  .step-list { display: flex; flex-direction: column; gap: 0; }
+  .step-item { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--gray-100); }
+  .step-item:last-child { border-bottom: none; }
+  .step-num {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; margin-top: 1px;
+  }
+  .sn-red { background: var(--red-light); color: var(--red-dark); }
+  .sn-orange { background: var(--orange-light); color: var(--orange-dark); }
+  .sn-blue { background: var(--blue-light); color: var(--blue-dark); }
+  .sn-purple { background: var(--purple-light); color: var(--purple-dark); }
+  .sn-green { background: var(--green-light); color: var(--green-dark); }
+  .step-content h4 { font-size: 13px; font-weight: 700; color: var(--gray-900); }
+  .step-content p { font-size: 12px; color: var(--gray-500); margin-top: 3px; line-height: 1.45; }
+  .step-tag { display: inline-block; background: var(--gray-100); color: var(--gray-600); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-top: 6px; }
+  .step-tag.red { background: var(--red-light); color: var(--red-dark); }
+  .step-tag.orange { background: var(--orange-light); color: var(--orange-dark); }
+  .step-tag.blue { background: var(--blue-light); color: var(--blue-dark); }
+
+  /* ── PHASE TABLE ── */
+  .phase-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .phase-table th { background: var(--gray-100); text-align: left; padding: 9px 14px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-400); border-bottom: 1px solid var(--gray-200); }
+  .phase-table td { padding: 11px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+  .phase-table tr:last-child td { border-bottom: none; }
+  .phase-table tr:hover td { background: var(--gray-50); }
+  .p-label { font-weight: 700; white-space: nowrap; }
+  .p1 { color: var(--red-dark); }
+  .p2 { color: var(--orange-dark); }
+  .p3 { color: var(--blue-dark); }
+
+  /* ── CALLOUT ── */
+  .callout { border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; display: flex; gap: 12px; }
+  .callout-red { background: var(--red-light); border: 1px solid #fca5a5; }
+  .callout-blue { background: var(--blue-light); border: 1px solid #bfdbfe; }
+  .callout-orange { background: var(--orange-light); border: 1px solid #fdba74; }
+  .callout-purple { background: var(--purple-light); border: 1px solid #c4b5fd; }
+  .callout-green { background: var(--green-light); border: 1px solid #86efac; }
+  .callout-icon { font-size: 18px; margin-top: 1px; flex-shrink: 0; }
+  .callout-text h4 { font-size: 13px; font-weight: 700; color: var(--gray-900); margin-bottom: 3px; }
+  .callout-text p { font-size: 12px; color: var(--gray-600); line-height: 1.45; }
+  .callout-text code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 11px; }
+
+  /* ── TOOLS GRID ── */
+  .tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .tool-card { background: #fff; border: 1px solid var(--gray-200); border-radius: 10px; padding: 16px; }
+  .tool-card .tool-name { font-size: 13px; font-weight: 700; color: var(--gray-900); margin-bottom: 4px; }
+  .tool-card .tool-use { font-size: 11px; color: var(--gray-500); margin-bottom: 8px; line-height: 1.4; }
+  .tool-card .tool-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+  .tool-card.free .tool-tag { background: var(--green-light); color: var(--green-dark); }
+  .tool-card.paid .tool-tag { background: var(--blue-light); color: var(--blue-dark); }
+
+  /* ── FOOTER ── */
+  .footer { text-align: center; font-size: 11px; color: var(--gray-400); margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--gray-200); }
+
+  /* ── COMPLETION TRACKING ── */
+  .step-item { cursor: pointer; border-radius: 8px; padding: 14px 10px; margin: 0 -10px; transition: background 0.15s; }
+  .step-item:hover { background: rgba(0,0,0,0.025); }
+  .step-item.done { opacity: 0.55; }
+  .step-item.done .step-content h4 { text-decoration: line-through; color: var(--gray-400); }
+  .step-item.done .step-num { background: var(--green-light) !important; color: var(--green-dark) !important; }
+  .step-item.done .step-num::after { content: '✓'; }
+  .step-item.done .step-num span { display: none; }
+  .done-badge {
+    display: none; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 700; color: var(--green-dark);
+    background: var(--green-light); padding: 2px 7px; border-radius: 99px; margin-left: 8px;
+  }
+  .step-item.done .done-badge { display: inline-flex; }
+  /* progress bar */
+  .progress-wrap { background: #fff; border: 1px solid var(--gray-200); border-radius: 12px; padding: 18px 22px; margin-bottom: 24px; }
+  .progress-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .progress-label { font-size: 13px; font-weight: 700; color: var(--gray-900); }
+  .progress-count { font-size: 13px; color: var(--gray-400); }
+  .progress-count strong { color: var(--gray-900); }
+  .progress-track { background: var(--gray-100); border-radius: 99px; height: 8px; overflow: hidden; }
+  .progress-fill { height: 8px; border-radius: 99px; background: linear-gradient(90deg, var(--hs-orange), #ff5733); transition: width 0.4s ease; }
+  .progress-phases { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .phase-dot { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--gray-500); }
+  .phase-dot span { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .hint-text { font-size: 11px; color: var(--gray-400); margin-top: 8px; font-style: italic; }
+  /* reset button */
+  .reset-btn { background: none; border: 1px solid var(--gray-200); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--gray-400); cursor: pointer; transition: all 0.15s; }
+  .reset-btn:hover { background: var(--gray-100); color: var(--gray-600); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .issue-table-header, .issue-row { grid-template-columns: 1fr; }
+    .tab-bar { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-left">
+    <div class="nav-logo">
+      <svg width="18" height="18" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="20" fill="#ff7a59"/><path d="M13 20h14M20 13v14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      Happen Ventures
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-title">HubSpot Contacts Audit</div>
+    <div class="nav-badge">Phase 1</div>
+  </div>
+  <div class="nav-right">
+    <span><span class="live-dot"></span>Live data</span>
+    <span>Portal 861426</span>
+    <span>March 6, 2026</span>
+  </div>
+</nav>
+
+<!-- TABS -->
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab('overview')">📊 Overview <span class="tab-count">312,994</span></div>
+  <div class="tab" onclick="showTab('issues')">⚠️ Issues <span class="tab-count">9</span></div>
+  <div class="tab" onclick="showTab('aircall')">🤖 Aircall Junk <span class="tab-count">9,289</span></div>
+  <div class="tab" onclick="showTab('email')">📧 Email Health <span class="tab-count">14,672</span></div>
+  <div class="tab" onclick="showTab('owners')">👤 Owners <span class="tab-count">149,370</span></div>
+  <div class="tab" onclick="showTab('roadmap')">🗺️ Action Plan</div>
+  <div class="tab" onclick="showTab('lists')">📋 Create Lists <span class="tab-count">7</span></div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+<div id="tab-overview" class="section active">
+
+  <div class="page-header">
+    <h1>Contacts Data Quality Report</h1>
+    <div class="subtitle">Full audit of 312,994 contacts scanned for dirty data across 9 issue categories. Aligned with the Happen Ventures Ops Audit roadmap. This is Phase 1: Clean House.</div>
+    <div class="meta-row">
+      <span>📊 312,994 total contacts</span>
+      <span>⚠️ 9 issue categories found</span>
+      <span>🗑 ~9,294 safe to delete immediately (Aircall + ghosts)</span>
+      <span>✨ ~30,000+ contacts need enrichment</span>
+    </div>
+  </div>
+
+  <!-- BIG WARNING -->
+  <div class="callout callout-red">
+    <div class="callout-icon">🚨</div>
+    <div class="callout-text">
+      <h4>Critical: 48% of contacts have no owner assigned (149,370 records orphaned)</h4>
+      <p>This is the single biggest CRM problem after Aircall junk. Nearly half your contacts have no rep responsible for them — they will never be worked. This directly kills lead conversion. The Notion audit identified 60+ inactive owners still assigned to records; this makes the problem even worse.</p>
+    </div>
+  </div>
+
+  <!-- SUMMARY CARDS -->
+  <div class="cards-grid">
+    <div class="stat-card c-blue">
+      <div class="s-label">Total Contacts</div>
+      <div class="s-value">312,994</div>
+      <div class="s-sub">All contacts in portal</div>
+    </div>
+    <div class="stat-card c-red">
+      <div class="s-label">Aircall Junk</div>
+      <div class="s-value">9,289</div>
+      <div class="s-sub">Auto-created, no real data</div>
+      <span class="s-pct">DELETE NOW</span>
+    </div>
+    <div class="stat-card c-red">
+      <div class="s-label">Missing Email</div>
+      <div class="s-value">14,672</div>
+      <div class="s-sub">Cannot email or deduplicate</div>
+      <span class="s-pct">4.7% of DB</span>
+    </div>
+    <div class="stat-card c-orange">
+      <div class="s-label">No Owner</div>
+      <div class="s-value">149,370</div>
+      <div class="s-sub">Nobody responsible</div>
+      <span class="s-pct">47.7% of DB</span>
+    </div>
+    <div class="stat-card c-orange">
+      <div class="s-label">Missing First Name</div>
+      <div class="s-value">10,257</div>
+      <div class="s-sub">Breaks email personalization</div>
+      <span class="s-pct">3.3% of DB</span>
+    </div>
+    <div class="stat-card c-orange">
+      <div class="s-label">Missing Last Name</div>
+      <div class="s-value">11,186</div>
+      <div class="s-sub">Incomplete identity</div>
+      <span class="s-pct">3.6% of DB</span>
+    </div>
+    <div class="stat-card c-purple">
+      <div class="s-label">No Company Link</div>
+      <div class="s-value">12,801</div>
+      <div class="s-sub">Breaks account-based view</div>
+      <span class="s-pct">4.1% of DB</span>
+    </div>
+    <div class="stat-card c-purple">
+      <div class="s-label">No Lifecycle Stage</div>
+      <div class="s-value">12,258</div>
+      <div class="s-sub">Can't segment by funnel</div>
+      <span class="s-pct">3.9% of DB</span>
+    </div>
+    <div class="stat-card c-yellow">
+      <div class="s-label">No Deals Ever</div>
+      <div class="s-value">304,368</div>
+      <div class="s-sub">Never touched a pipeline</div>
+      <span class="s-pct">97.3% of DB</span>
+    </div>
+    <div class="stat-card c-green">
+      <div class="s-label">Contacts with Deals</div>
+      <div class="s-value">8,626</div>
+      <div class="s-sub">Engaged in pipeline</div>
+      <span class="s-pct">2.7% of DB</span>
+    </div>
+    <div class="stat-card c-gray">
+      <div class="s-label">Fully Ghost Records</div>
+      <div class="s-value">5</div>
+      <div class="s-sub">No data at all</div>
+      <span class="s-pct">DELETE NOW</span>
+    </div>
+    <div class="stat-card c-teal">
+      <div class="s-label">Validate Emails Field</div>
+      <div class="s-value">Exists</div>
+      <div class="s-sub">Custom field already set up</div>
+      <span class="s-pct">Not yet used</span>
+    </div>
+  </div>
+
+  <!-- VISUAL BREAKDOWN -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">🎯 Key Issue Distribution</div>
+      <div class="panel-sub">How many contacts fall into each problem category</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">No Owner Assigned</span>
+            <span style="font-weight:700;color:var(--orange)">149,370 <span style="font-weight:400;color:var(--gray-400)">(47.7%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-orange" style="width:47.7%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">No Deals Associated</span>
+            <span style="font-weight:700;color:var(--purple)">304,368 <span style="font-weight:400;color:var(--gray-400)">(97.3%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-purple" style="width:97.3%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">Missing Email</span>
+            <span style="font-weight:700;color:var(--red)">14,672 <span style="font-weight:400;color:var(--gray-400)">(4.7%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-red" style="width:4.7%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">Aircall Junk Contacts</span>
+            <span style="font-weight:700;color:var(--red)">9,289 <span style="font-weight:400;color:var(--gray-400)">(3.0%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-red" style="width:3%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">Missing Last Name</span>
+            <span style="font-weight:700;color:var(--orange)">11,186 <span style="font-weight:400;color:var(--gray-400)">(3.6%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-orange" style="width:3.6%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">No Company Association</span>
+            <span style="font-weight:700;color:var(--purple)">12,801 <span style="font-weight:400;color:var(--gray-400)">(4.1%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-purple" style="width:4.1%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+            <span style="color:var(--gray-700)">No Lifecycle Stage</span>
+            <span style="font-weight:700;color:var(--purple)">12,258 <span style="font-weight:400;color:var(--gray-400)">(3.9%)</span></span>
+          </div>
+          <div class="bar-wrap"><div class="bar bar-purple" style="width:3.9%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">🔗 Key Overlaps Found</div>
+      <div class="panel-sub">Contacts appearing in multiple problem categories</div>
+      <div class="overlap-item">
+        <div>
+          <div class="overlap-label">Aircall contacts (subset of missing email)</div>
+          <div class="overlap-sub">9,289 Aircall junk = 63% of all contacts missing email</div>
+        </div>
+        <div class="overlap-count red">9,289</div>
+      </div>
+      <div class="overlap-item">
+        <div>
+          <div class="overlap-label">Missing email + no company</div>
+          <div class="overlap-sub">Can't enrich — no anchor data at all</div>
+        </div>
+        <div class="overlap-count red">9,451</div>
+      </div>
+      <div class="overlap-item">
+        <div>
+          <div class="overlap-label">Fully ghost (no email, no name, no company)</div>
+          <div class="overlap-sub">Zero data — safe to delete immediately</div>
+        </div>
+        <div class="overlap-count red">5</div>
+      </div>
+      <div class="overlap-item">
+        <div>
+          <div class="overlap-label">Contacts with deals (healthy anchor)</div>
+          <div class="overlap-sub">Only 2.7% of DB has ever touched a pipeline</div>
+        </div>
+        <div class="overlap-count green">8,626</div>
+      </div>
+      <div class="overlap-item">
+        <div>
+          <div class="overlap-label">Validate emails custom field (exists but unused)</div>
+          <div class="overlap-sub">You already built the field — just need to populate it</div>
+        </div>
+        <div class="overlap-count orange">Ready</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════ ALL ISSUES ═══════════════════ -->
+<div id="tab-issues" class="section">
+
+  <div class="page-header">
+    <h1>All Issues — Detail View</h1>
+    <div class="subtitle">Every dirty data category with count, severity, recommended action, and direct HubSpot filter links.</div>
+  </div>
+
+  <div class="issue-table">
+    <div class="issue-table-header">
+      <div>Issue Type</div>
+      <div>Count</div>
+      <div>% of DB</div>
+      <div>Visual Scale</div>
+      <div>Action</div>
+      <div>HubSpot Link</div>
+    </div>
+
+    <!-- AIRCALL -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">🤖 Aircall Auto-Created Contacts</div>
+        <div class="issue-desc">firstname = phone number, lastname = "Aircall new contact". Every unknown inbound call creates one. No email, no real name, no company. Polluting the entire DB in real-time — <strong>still growing today</strong>.</div>
+      </div>
+      <div><div class="issue-count">9,289</div><div style="font-size:11px;color:var(--gray-400)">and growing</div></div>
+      <div class="issue-pct-num pct-red">3.0%</div>
+      <div><div class="bar-wrap"><div class="bar bar-red" style="width:3%"></div></div></div>
+      <div><span class="pill pill-delete">🗑 Delete Now</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?searchQuery=Aircall+new+contact" target="_blank" class="hs-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+          View in HubSpot
+        </a>
+      </div>
+    </div>
+
+    <!-- GHOST -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">👻 Fully Ghost Records</div>
+        <div class="issue-desc">No email, no first name, no last name, no company. Completely blank. Likely from failed integrations or partial API writes.</div>
+      </div>
+      <div><div class="issue-count">5</div></div>
+      <div class="issue-pct-num pct-red">&lt;0.1%</div>
+      <div><div class="bar-wrap"><div class="bar bar-red" style="width:0.5%"></div></div></div>
+      <div><span class="pill pill-delete">🗑 Delete Now</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1" target="_blank" class="hs-btn">↗ View All</a>
+      </div>
+    </div>
+
+    <!-- NO OWNER -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">👤 No Contact Owner Assigned</div>
+        <div class="issue-desc">No rep owns this contact. It will never be worked. This includes contacts from the 60+ inactive owner accounts from the Notion audit. Critical for lead conversion.</div>
+      </div>
+      <div><div class="issue-count">149,370</div></div>
+      <div class="issue-pct-num pct-orange">47.7%</div>
+      <div><div class="bar-wrap"><div class="bar bar-orange" style="width:47.7%"></div></div></div>
+      <div><span class="pill pill-assign">👤 Assign</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22hubspot_owner_id%22%2C%22operation%22%3A%7B%22operator%22%3A%22IS_EMPTY%22%7D%7D%5D" target="_blank" class="hs-btn">↗ View in HubSpot</a>
+      </div>
+    </div>
+
+    <!-- MISSING EMAIL -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">📧 Missing Email Address</div>
+        <div class="issue-desc">No email on file. Can't send campaigns, enroll in sequences, or deduplicate. 63% of these are Aircall junk. Remaining ~5,383 may have a name or phone and could be enrichable.</div>
+      </div>
+      <div><div class="issue-count">14,672</div></div>
+      <div class="issue-pct-num pct-red">4.7%</div>
+      <div><div class="bar-wrap"><div class="bar bar-red" style="width:4.7%"></div></div></div>
+      <div><span class="pill pill-review">🔍 Review</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22email%22%2C%22operation%22%3A%7B%22operator%22%3A%22IS_EMPTY%22%7D%7D%5D" target="_blank" class="hs-btn">↗ View in HubSpot</a>
+      </div>
+    </div>
+
+    <!-- MISSING FIRST NAME -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">🏷 Missing First Name</div>
+        <div class="issue-desc">Email personalization will break (e.g. "Hi ,"). Many came in from bulk imports or form fills. Can be enriched if email exists.</div>
+      </div>
+      <div><div class="issue-count">10,257</div></div>
+      <div class="issue-pct-num pct-orange">3.3%</div>
+      <div><div class="bar-wrap"><div class="bar bar-orange" style="width:3.3%"></div></div></div>
+      <div><span class="pill pill-enrich">✨ Enrich</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22firstname%22%2C%22operation%22%3A%7B%22operator%22%3A%22IS_EMPTY%22%7D%7D%5D" target="_blank" class="hs-btn">↗ View in HubSpot</a>
+      </div>
+    </div>
+
+    <!-- MISSING LAST NAME -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">🏷 Missing Last Name</div>
+        <div class="issue-desc">Often paired with missing first name. Common for phone-capture-only contacts. Slightly higher than first name missing — some have first name only.</div>
+      </div>
+      <div><div class="issue-count">11,186</div></div>
+      <div class="issue-pct-num pct-orange">3.6%</div>
+      <div><div class="bar-wrap"><div class="bar bar-orange" style="width:3.6%"></div></div></div>
+      <div><span class="pill pill-enrich">✨ Enrich</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22lastname%22%2C%22operation%22%3A%7B%22operator%22%3A%22IS_EMPTY%22%7D%7D%5D" target="_blank" class="hs-btn">↗ View in HubSpot</a>
+      </div>
+    </div>
+
+    <!-- NO COMPANY -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">🏢 No Company Association</div>
+        <div class="issue-desc">Contact has no linked Company record. Kills account-based selling and company-level rollup reports. HubSpot can auto-associate by email domain — enable this in settings.</div>
+      </div>
+      <div><div class="issue-count">12,801</div></div>
+      <div class="issue-pct-num pct-purple">4.1%</div>
+      <div><div class="bar-wrap"><div class="bar bar-purple" style="width:4.1%"></div></div></div>
+      <div><span class="pill pill-enrich">✨ Enrich</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22associatedcompanyid%22%2C%22operation%22%3A%7B%22operator%22%3A%22IS_EMPTY%22%7D%7D%5D" target="_blank" class="hs-btn">↗ View in HubSpot</a>
+      </div>
+    </div>
+
+    <!-- NO LIFECYCLE -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">🔄 No Lifecycle Stage Set</div>
+        <div class="issue-desc">Cannot segment by funnel position — are they a lead? Subscriber? MQL? Without this, marketing automation and lead scoring don't work correctly.</div>
+      </div>
+      <div><div class="issue-count">12,258</div></div>
+      <div class="issue-pct-num pct-purple">3.9%</div>
+      <div><div class="bar-wrap"><div class="bar bar-purple" style="width:3.9%"></div></div></div>
+      <div><span class="pill pill-segment">📋 Segment</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22lifecyclestage%22%2C%22operation%22%3A%7B%22operator%22%3A%22IS_EMPTY%22%7D%7D%5D" target="_blank" class="hs-btn">↗ View in HubSpot</a>
+      </div>
+    </div>
+
+    <!-- NO DEALS -->
+    <div class="issue-row">
+      <div>
+        <div class="issue-name">💰 No Deals Associated (Never in Pipeline)</div>
+        <div class="issue-desc">97.3% of contacts have never been linked to a deal. This is expected for marketing contacts and subscribers, but needs lifecycle segmentation to separate leads from dead weight. Do not delete indiscriminately — filter by lifecycle stage first.</div>
+      </div>
+      <div><div class="issue-count">304,368</div></div>
+      <div class="issue-pct-num pct-purple">97.3%</div>
+      <div><div class="bar-wrap"><div class="bar bar-purple" style="width:97.3%"></div></div></div>
+      <div><span class="pill pill-segment">📋 Segment</span></div>
+      <div>
+        <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1" target="_blank" class="hs-btn">↗ View All</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FUTURE CHECKS -->
+  <div class="sh"><div><h2>💡 Additional Checks to Run (Phase 2)</h2><p>Not yet queried — recommended for next pass</p></div></div>
+  <table class="phase-table" style="background:#fff;border:1px solid var(--gray-200);border-radius:12px;overflow:hidden;">
+    <thead><tr><th>Issue</th><th>Why It Matters</th><th>How to Find It</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Duplicate contacts</strong></td><td>Splits activity history, double-counts in reports</td><td>HubSpot Deduplicate tool or Dedupely</td><td><span class="p-label p1">P1</span></td></tr>
+      <tr><td><strong>Invalid/fake emails</strong><br><small>test@test.com, noemail@, etc.</small></td><td>Hard bounces damage domain reputation</td><td>Email validation (NeverBounce, ZeroBounce) — you already have a <code>validate_emails</code> field!</td><td><span class="p-label p1">P1</span></td></tr>
+      <tr><td><strong>Non-Aircall phone-as-name</strong><br><small>firstname starts with "+"</small></td><td>Other integrations (SMS, WhatsApp) may do the same</td><td>Filter: firstname CONTAINS_TOKEN "+"</td><td><span class="p-label p2">P2</span></td></tr>
+      <tr><td><strong>Stale contacts (12+ months no activity)</strong></td><td>Emailing them harms deliverability</td><td>hs_last_activity_date older than 12 months</td><td><span class="p-label p2">P2</span></td></tr>
+      <tr><td><strong>Records from inactive owners</strong></td><td>60+ inactive owner accounts still assigned</td><td>Cross-reference owner list with active team roster</td><td><span class="p-label p1">P1</span></td></tr>
+      <tr><td><strong>Contacts opted out but still in active sequences</strong></td><td>Legal risk + deliverability</td><td>hs_email_optout = true AND enrolled in sequence</td><td><span class="p-label p1">P1</span></td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+<!-- ═══════════════════ AIRCALL ═══════════════════ -->
+<div id="tab-aircall" class="section">
+  <div class="page-header">
+    <h1>🤖 Aircall Junk Contacts — Deep Dive</h1>
+    <div class="subtitle">9,289 auto-created contacts from Aircall integration. Still growing in real-time. This was the #1 finding in the Notion audit too (originally counted 9,133 — it's grown since).</div>
+  </div>
+
+  <div class="callout callout-red">
+    <div class="callout-icon">🔴</div>
+    <div class="callout-text">
+      <h4>This database is growing right now — every unknown inbound call creates a new junk contact</h4>
+      <p>The Aircall integration is configured to auto-create a HubSpot contact whenever someone calls in who isn't already in the system. The result: <code>firstname = +13035341231</code>, <code>lastname = Aircall new contact</code>, no email, no company. The fix is in Aircall settings — not HubSpot.</p>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">What These Contacts Look Like</div>
+      <div class="panel-sub">Every Aircall junk contact has the same pattern:</div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;line-height:2;">
+        <div><strong>firstname:</strong> <span style="color:var(--red)">+13035341231</span></div>
+        <div><strong>lastname:</strong> <span style="color:var(--red)">Aircall new contact</span></div>
+        <div><strong>email:</strong> <span style="color:var(--gray-400)">(empty)</span></div>
+        <div><strong>company:</strong> <span style="color:var(--gray-400)">(empty)</span></div>
+        <div><strong>phone:</strong> <span style="color:var(--blue)">+13035341231</span></div>
+        <div><strong>num_associated_deals:</strong> <span style="color:var(--gray-400)">0</span></div>
+        <div><strong>hubspot_owner_id:</strong> <span style="color:var(--gray-400)">(empty)</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">3-Step Fix</div>
+      <div class="panel-sub">Permanent solution to stop Aircall from polluting your CRM</div>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num sn-red">1</div>
+          <div class="step-content">
+            <h4>Delete all 9,289 existing junk contacts in HubSpot</h4>
+            <p>Filter by <em>Last Name = "Aircall new contact"</em>. Bulk-select all → Delete. These have zero recoverable value.</p>
+            <span class="step-tag red">Do this week — Notion audit Priority #1</span>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num sn-orange">2</div>
+          <div class="step-content">
+            <h4>In Aircall: Disable auto-contact creation for unknown callers</h4>
+            <p>Go to Aircall Dashboard → Integrations → HubSpot → Turn off "Create contact on new call." Unknown callers will still be logged as calls but won't create contacts.</p>
+            <span class="step-tag orange">Stops new junk immediately</span>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num sn-blue">3</div>
+          <div class="step-content">
+            <h4>Set up a smart workflow: Enrich within 24hr or auto-delete</h4>
+            <p>If you want to keep phone-only contacts: HubSpot Workflow → trigger on contact created with lastname "Aircall new contact" → wait 24hr → if still no email → delete. If email found via enrichment → keep and update name.</p>
+            <span class="step-tag blue">Phase 2 automation</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:0">
+    <div class="panel-title">🔗 Direct HubSpot Actions</div>
+    <div class="panel-sub">Click to open in HubSpot with the filter already applied</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+      <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?searchQuery=Aircall+new+contact" target="_blank" class="hs-btn" style="font-size:13px;padding:8px 14px;">
+        ↗ View all 9,289 Aircall contacts
+      </a>
+      <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?filters=%5B%7B%22property%22%3A%22lastname%22%2C%22operation%22%3A%7B%22operator%22%3A%22EQ%22%2C%22value%22%3A%22Aircall%20new%20contact%22%7D%7D%5D" target="_blank" class="hs-btn" style="font-size:13px;padding:8px 14px;">
+        ↗ Filter by lastname = "Aircall new contact"
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ EMAIL HEALTH ═══════════════════ -->
+<div id="tab-email" class="section">
+  <div class="page-header">
+    <h1>📧 Email Health & Validation</h1>
+    <div class="subtitle">14,672 contacts have no email. You already have a <strong>validate_emails</strong> custom field in HubSpot — it just hasn't been populated yet. Here's how to close the loop.</div>
+  </div>
+
+  <div class="callout callout-blue">
+    <div class="callout-icon">💡</div>
+    <div class="callout-text">
+      <h4>You already built the infrastructure — the <code>validate_emails</code> field exists on contacts</h4>
+      <p>This means someone on your team already recognized this need. The field is there but unpopulated. The quickest path is to connect an email validation service (NeverBounce, ZeroBounce, or Clay) and bulk-update this field for all contacts that have an email address. Then use it to suppress bad addresses from all campaigns.</p>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">📊 Email Status Breakdown</div>
+      <div class="panel-sub">Of your 312,994 contacts…</div>
+      <div class="step-list">
+        <div class="overlap-item">
+          <div><div class="overlap-label">Have an email address</div><div class="overlap-sub">298,322 contacts</div></div>
+          <div class="overlap-count green">95.3%</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Missing email (total)</div><div class="overlap-sub">Includes Aircall junk</div></div>
+          <div class="overlap-count red">14,672</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Missing email — Aircall only</div><div class="overlap-sub">Auto-created, no recovery possible</div></div>
+          <div class="overlap-count red">9,289</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Missing email — non-Aircall</div><div class="overlap-sub">May have name/phone to enrich from</div></div>
+          <div class="overlap-count orange">~5,383</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">hs_email_bad_address flagged by HubSpot</div><div class="overlap-sub">HubSpot hasn't marked any as bad yet</div></div>
+          <div class="overlap-count green">0</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">validate_emails field populated</div><div class="overlap-sub">Custom field exists — not yet used</div></div>
+          <div class="overlap-count orange">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">✅ Email Validation Tools</div>
+      <div class="panel-sub">Options to validate your 298K emails at scale</div>
+      <div class="tools-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="tool-card paid">
+          <div class="tool-name">NeverBounce</div>
+          <div class="tool-use">Bulk validate up to 1M emails. Direct HubSpot integration available. Exports results back to a custom field.</div>
+          <span class="tool-tag">Paid — ~$80 for 100K</span>
+        </div>
+        <div class="tool-card paid">
+          <div class="tool-name">ZeroBounce</div>
+          <div class="tool-use">Similar to NeverBounce. Has a HubSpot native integration. Good for identifying spam traps.</div>
+          <span class="tool-tag">Paid — $65 for 100K</span>
+        </div>
+        <div class="tool-card paid">
+          <div class="tool-name">Clay</div>
+          <div class="tool-use">Enrichment + validation in one. Can also fill in first/last names and company. Best ROI if you need full enrichment.</div>
+          <span class="tool-tag">Paid — subscription</span>
+        </div>
+        <div class="tool-card free">
+          <div class="tool-name">HubSpot Native</div>
+          <div class="tool-use">hs_email_bad_address auto-flags hard bounces after sending. Free but reactive — only works after you send.</div>
+          <span class="tool-tag">Free — already enabled</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">📋 Email Validation Action Plan</div>
+    <div class="panel-sub">Step-by-step to get your email list clean</div>
+    <div class="step-list">
+      <div class="step-item">
+        <div class="step-num sn-red">1</div>
+        <div class="step-content">
+          <h4>Delete all Aircall junk (removes 9,289 no-email contacts instantly)</h4>
+          <p>This single action improves your email coverage rate from 95.3% to 98.2% of remaining contacts.</p>
+          <span class="step-tag red">This week</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-orange">2</div>
+        <div class="step-content">
+          <h4>Run NeverBounce or ZeroBounce on all 298K email contacts</h4>
+          <p>Export from HubSpot → upload to validator → get back: Valid / Invalid / Risky / Unknown. Import results back into your <code>validate_emails</code> custom field. Suppress all Invalid and Risky immediately.</p>
+          <span class="step-tag orange">This month</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-orange">3</div>
+        <div class="step-content">
+          <h4>For ~5,383 non-Aircall contacts missing email: enrich or purge</h4>
+          <p>If they have a company name or phone number, try enriching via Clay or Apollo. If no anchor data at all, delete them — they have no value.</p>
+          <span class="step-tag orange">This month</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-blue">4</div>
+        <div class="step-content">
+          <h4>Build a HubSpot suppression list from validate_emails field</h4>
+          <p>Create an active list: validate_emails = "Invalid" OR "Risky". Exclude this list from all marketing sends. Auto-updates as new contacts are validated.</p>
+          <span class="step-tag blue">Phase 2</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-green">5</div>
+        <div class="step-content">
+          <h4>Set up validation on new contact creation going forward</h4>
+          <p>Use n8n or HubSpot workflows to trigger email validation (via API) whenever a new contact is created with an email. Stamp result into validate_emails within minutes of creation.</p>
+          <span class="step-tag">Phase 3</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ OWNERS ═══════════════════ -->
+<div id="tab-owners" class="section">
+  <div class="page-header">
+    <h1>👤 Contact Owner Assignment</h1>
+    <div class="subtitle">149,370 contacts (47.7%) have no owner. Combined with 60+ inactive owner accounts from the Notion audit, this is the most operationally damaging issue in your CRM.</div>
+  </div>
+
+  <div class="callout callout-orange">
+    <div class="callout-icon">⚠️</div>
+    <div class="callout-text">
+      <h4>No owner = nobody works the contact. This directly kills revenue.</h4>
+      <p>The Notion audit confirmed that the top 5 most recent contacts were all marked <code>hs_is_unworked: true</code>. With 149,370 orphaned contacts, plus records sitting with inactive reps, your leads are arriving and going cold with zero follow-up. The fix requires both bulk reassignment AND a routing automation to prevent recurrence.</p>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Problem Breakdown</div>
+      <div class="panel-sub">Two separate owner issues compounding each other</div>
+      <div class="step-list">
+        <div class="overlap-item">
+          <div><div class="overlap-label">Contacts with NO owner at all</div><div class="overlap-sub">hubspot_owner_id is empty</div></div>
+          <div class="overlap-count red">149,370</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Inactive owner accounts (per Notion audit)</div><div class="overlap-sub">60+ old reps still assigned to records</div></div>
+          <div class="overlap-count orange">60+</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Blank-name owner accounts</div><div class="overlap-sub">Accounts with no name at all</div></div>
+          <div class="overlap-count orange">5+</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Currently active owners</div><div class="overlap-sub">Per Notion audit roster</div></div>
+          <div class="overlap-count green">~14</div>
+        </div>
+        <div class="overlap-item">
+          <div><div class="overlap-label">Bot/team accounts mixed in</div><div class="overlap-sub">"HV Sales Team", "Opie Support", etc.</div></div>
+          <div class="overlap-count orange">5+</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Active Owner Roster (per Notion audit)</div>
+      <div class="panel-sub">Only these ~14 people should have contacts assigned</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Jessica Gonzalez</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Daniela Pinto</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Valery Santiago</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">D'Angelo Mercado</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Danny Hernandez</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Vigan Pocesta</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Ivan Rangel</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Farid Casir</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Marytza Arce</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Mario Palacios</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Joan Moya</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Milos Stefanovic</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Daniel Hernandez</span>
+        <span style="background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Ricardo Andrade</span>
+        <span style="background:var(--blue-light);color:var(--blue-dark);font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;">Opie Support (bot)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">📋 Owner Fix Action Plan</div>
+    <div class="panel-sub">Aligned with Notion audit Phase 1 — Clean House</div>
+    <div class="step-list">
+      <div class="step-item">
+        <div class="step-num sn-red">1</div>
+        <div class="step-content">
+          <h4>Bulk reassign contacts from all inactive owners to a queue or active rep</h4>
+          <p>In HubSpot: filter by owner = [inactive rep name] → select all → Assign to owner → pick active rep or create a "Unassigned Queue" team. Do this for all 60+ inactive owners from the Notion audit list.</p>
+          <span class="step-tag red">This week</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-red">2</div>
+        <div class="step-content">
+          <h4>Assign or triage the 149,370 contacts with no owner</h4>
+          <p>Don't try to assign all 149K at once. Start with contacts that have an email AND a deal OR recent activity. These are your highest-value orphans. Assign to active reps based on territory or deal type.</p>
+          <span class="step-tag red">This week (high-value first)</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-orange">3</div>
+        <div class="step-content">
+          <h4>Delete blank-name owner accounts and archive legacy bots</h4>
+          <p>Remove the 5+ owner accounts with no name. Archive "InCharged Operations," "Event Tech Sales," "Future Setter" — these are dead business lines from the Notion audit.</p>
+          <span class="step-tag orange">This month</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-blue">4</div>
+        <div class="step-content">
+          <h4>Build a lead routing workflow to auto-assign new contacts</h4>
+          <p>New contact created → HubSpot Workflow → assign to rep based on: deal type (Happen Ventures vs. Donations vs. Account Growth), geography, or round-robin across active reps. This prevents the orphan problem from recurring.</p>
+          <span class="step-tag blue">Phase 2</span>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num sn-blue">5</div>
+        <div class="step-content">
+          <h4>Set up SLA alert: new lead unworked for &gt;2 hours → Slack ping</h4>
+          <p>Workflow: contact created + is_unworked = true + 2hr delay → if still unworked → post to Slack #sales with contact details. The Notion audit flagged this as a critical gap.</p>
+          <span class="step-tag blue">Phase 2</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ACTION PLAN ═══════════════════ -->
+<div id="tab-roadmap" class="section">
+  <div class="page-header">
+    <h1>🗺️ Action Plan — Contacts Phase 1</h1>
+    <div class="subtitle">Aligned with the Happen Ventures Ops Audit roadmap. Contacts cleanup is the first milestone of "Clean House" (Weeks 1–2). Sequenced by impact and effort.</div>
+  </div>
+
+  <!-- PROGRESS BAR -->
+  <div class="progress-wrap">
+    <div class="progress-top">
+      <div class="progress-label">🎯 Cleanup Progress</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="progress-count"><strong id="done-count">0</strong> / 12 completed</div>
+        <button class="reset-btn" onclick="resetProgress()">↺ Reset</button>
+      </div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="progress-phases">
+      <div class="phase-dot"><span style="background:var(--red)"></span> Delete Now (2)</div>
+      <div class="phase-dot"><span style="background:var(--orange)"></span> This Week (3)</div>
+      <div class="phase-dot"><span style="background:var(--blue)"></span> This Month (4)</div>
+      <div class="phase-dot"><span style="background:var(--purple)"></span> Phase 2 (3)</div>
+    </div>
+    <div class="hint-text">💡 Click any step to mark it complete — progress saves automatically</div>
+  </div>
+
+  <div class="callout callout-green">
+    <div class="callout-icon">✅</div>
+    <div class="callout-text">
+      <h4>What Cowork + Claude can help automate from this list</h4>
+      <p>Several of these tasks can be partially or fully automated: bulk contact exports for validation, CSV generation for enrichment tools, building HubSpot filter URLs, cross-referencing owner lists against the active roster, and tracking cleanup progress over time. Ask me to run any of these.</p>
+    </div>
+  </div>
+
+  <div class="sh"><div><h2>🗑 Delete Now — Zero Risk, Maximum Impact</h2></div></div>
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="step-list">
+      <div class="step-item" data-id="step-1" onclick="toggleStep(this)">
+        <div class="step-num sn-red"><span>1</span></div>
+        <div class="step-content">
+          <h4>Delete 9,289 Aircall junk contacts <span class="done-badge">✓ Done</span></h4>
+          <p>Filter by <em>Last Name = "Aircall new contact"</em> in HubSpot. Select all. Delete. These have no recoverable data. Also the #1 item in the Notion audit Priority Matrix ("Do This Week").</p>
+          <span class="step-tag red">DELETE: 9,289 contacts</span>
+          <a href="https://app.hubspot.com/contacts/861426/contacts/list/all/page/1?searchQuery=Aircall+new+contact" target="_blank" class="hs-btn" style="margin-left:8px" onclick="event.stopPropagation()">↗ Open filter in HubSpot</a>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-2" onclick="toggleStep(this)">
+        <div class="step-num sn-red"><span>2</span></div>
+        <div class="step-content">
+          <h4>Delete 5 fully ghost contacts (no data at all) <span class="done-badge">✓ Done</span></h4>
+          <p>Filter: email IS EMPTY AND firstname IS EMPTY AND lastname IS EMPTY AND associatedcompanyid IS EMPTY. Delete all 5.</p>
+          <span class="step-tag red">DELETE: 5 contacts</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sh"><div><h2>⚡ Do This Week — High Impact, Manageable Effort</h2></div></div>
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="step-list">
+      <div class="step-item" data-id="step-3" onclick="toggleStep(this)">
+        <div class="step-num sn-orange"><span>3</span></div>
+        <div class="step-content">
+          <h4>Fix Aircall integration to stop creating junk going forward <span class="done-badge">✓ Done</span></h4>
+          <p>Turn off "Create contact on new call" in Aircall → HubSpot integration settings. Stops the database from growing worse.</p>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-4" onclick="toggleStep(this)">
+        <div class="step-num sn-orange"><span>4</span></div>
+        <div class="step-content">
+          <h4>Bulk reassign contacts from inactive owner accounts <span class="done-badge">✓ Done</span></h4>
+          <p>Cross-reference all 75+ owner accounts against the 14 active reps. For each inactive owner: filter by owner in HubSpot → reassign to active rep or queue. Do highest-deal-count owners first.</p>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-5" onclick="toggleStep(this)">
+        <div class="step-num sn-orange"><span>5</span></div>
+        <div class="step-content">
+          <h4>Delete blank-name owner accounts and archive legacy bots <span class="done-badge">✓ Done</span></h4>
+          <p>Per Notion audit: delete 5+ blank accounts, archive "InCharged Operations," "Event Tech Sales," "Future Setter."</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sh"><div><h2>📅 Do This Month — Enrichment & Segmentation</h2></div></div>
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="step-list">
+      <div class="step-item" data-id="step-6" onclick="toggleStep(this)">
+        <div class="step-num sn-blue"><span>6</span></div>
+        <div class="step-content">
+          <h4>Run email validation on all 298K contacts with emails <span class="done-badge">✓ Done</span></h4>
+          <p>Use NeverBounce, ZeroBounce, or Clay. Write results back to your existing <code>validate_emails</code> field. Suppress all "Invalid" and "Risky" from campaigns immediately.</p>
+          <span class="step-tag blue">VALIDATE: 298,322 emails</span>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-7" onclick="toggleStep(this)">
+        <div class="step-num sn-blue"><span>7</span></div>
+        <div class="step-content">
+          <h4>Enrich missing names (first + last) for contacts that have email <span class="done-badge">✓ Done</span></h4>
+          <p>Use Clay or Apollo to backfill firstname/lastname. Target: the ~10–11K contacts missing names who do have an email. Enrichment rate typically 60–80% for business emails.</p>
+          <span class="step-tag blue">ENRICH: ~10-11K contacts</span>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-8" onclick="toggleStep(this)">
+        <div class="step-num sn-blue"><span>8</span></div>
+        <div class="step-content">
+          <h4>Enable HubSpot auto-company association by email domain <span class="done-badge">✓ Done</span></h4>
+          <p>Settings → Properties → Contacts → turn on "Automatically create and associate companies with contacts." Resolves a portion of the 12,801 contacts missing company links with zero manual effort.</p>
+          <span class="step-tag blue">AUTO-FIX: 12,801 potential</span>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-9" onclick="toggleStep(this)">
+        <div class="step-num sn-blue"><span>9</span></div>
+        <div class="step-content">
+          <h4>Assign lifecycle stages to the 12,258 contacts missing them <span class="done-badge">✓ Done</span></h4>
+          <p>Build a HubSpot workflow: contact has no lifecycle stage → based on source/behavior → assign Lead, MQL, or Subscriber. This is the prerequisite to effective no-deal-contact segmentation.</p>
+          <span class="step-tag blue">SEGMENT: 12,258 contacts</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sh"><div><h2>🤖 Phase 2 Automations — Prevent Recurrence</h2></div></div>
+  <div class="panel">
+    <div class="step-list">
+      <div class="step-item" data-id="step-10" onclick="toggleStep(this)">
+        <div class="step-num sn-purple"><span>10</span></div>
+        <div class="step-content">
+          <h4>Lead routing workflow: auto-assign new contacts to active reps <span class="done-badge">✓ Done</span></h4>
+          <p>New contact → workflow → round-robin or territory-based assignment across the 14 active reps. Prevents the 149K orphan problem from recurring.</p>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-11" onclick="toggleStep(this)">
+        <div class="step-num sn-purple"><span>11</span></div>
+        <div class="step-content">
+          <h4>SLA alert: unworked lead for &gt;2 hours → Slack notification <span class="done-badge">✓ Done</span></h4>
+          <p>From the Notion audit roadmap. Keeps new leads from going cold.</p>
+        </div>
+      </div>
+      <div class="step-item" data-id="step-12" onclick="toggleStep(this)">
+        <div class="step-num sn-purple"><span>12</span></div>
+        <div class="step-content">
+          <h4>AI call transcription → CRM auto-update (Phase 3 in Notion audit) <span class="done-badge">✓ Done</span></h4>
+          <p>Every Aircall → AI transcribes → extracts name, company, need → auto-creates/updates contact with real data instead of junk. Eliminates the Aircall problem permanently.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Live data from HubSpot Portal 861426 · Happen Ventures · Audit run March 6, 2026 · Generated by Claude (Cowork)
+    <br>⚠️ HubSpot Active List creation not available via API (OBJECT_LIST write permission not in current token scope — re-authorize or create lists manually using the filter links above)
+  </div>
+
+</div><!-- end roadmap -->
+
+<!-- ═══════════════════ CREATE LISTS ═══════════════════ -->
+<div id="tab-lists" class="section">
+
+  <div class="page-header">
+    <h1>📋 Create Lists in HubSpot</h1>
+    <div class="subtitle">7 Active Lists to create manually in HubSpot — each one auto-updates as contacts match or stop matching the criteria. Takes about 2 minutes per list.</div>
+  </div>
+
+  <div class="callout callout-blue">
+    <div class="callout-icon">📌</div>
+    <div class="callout-text">
+      <h4>How to create a list in HubSpot (same steps for all 7 below)</h4>
+      <p>
+        1. Go to <strong>CRM → Lists</strong> in your HubSpot portal &nbsp;·&nbsp;
+        2. Click <strong>"Create list"</strong> (top right) &nbsp;·&nbsp;
+        3. Choose <strong>"Contact-based"</strong> and <strong>"Active list"</strong> &nbsp;·&nbsp;
+        4. Name it exactly as shown below &nbsp;·&nbsp;
+        5. Add the filter shown &nbsp;·&nbsp;
+        6. Click <strong>"Save list"</strong>
+      </p>
+    </div>
+  </div>
+
+  <a href="https://app.hubspot.com/contacts/861426/lists" target="_blank" class="hs-btn" style="font-size:13px;padding:9px 16px;margin-bottom:24px;display:inline-flex;">
+    ↗ Open HubSpot Lists
+  </a>
+
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- LIST 1 -->
+    <div class="panel" style="border-left:4px solid var(--red);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">🤖</span>
+            <div class="panel-title" style="margin:0;">[Audit] Aircall Junk Contacts</div>
+            <span class="pill pill-delete">DELETE CANDIDATES</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">All auto-created contacts from the Aircall integration. Safe to bulk-delete.</div>
+        </div>
+        <button onclick="copyText('[Audit] Aircall Junk Contacts', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">Last name</span>
+          <span style="color:var(--gray-400);font-size:12px;">is equal to</span>
+          <span style="background:var(--red-light);border:1px solid #fca5a5;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--red-dark);font-family:monospace;">Aircall new contact</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~9,289 contacts</strong> &nbsp;·&nbsp; Auto-updates as Aircall creates more</div>
+    </div>
+
+    <!-- LIST 2 -->
+    <div class="panel" style="border-left:4px solid var(--red);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">📧</span>
+            <div class="panel-title" style="margin:0;">[Audit] Missing Email</div>
+            <span class="pill pill-review">REVIEW</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">All contacts with no email address. Cannot be emailed, enrolled in sequences, or deduplicated.</div>
+        </div>
+        <button onclick="copyText('[Audit] Missing Email', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">Email</span>
+          <span style="color:var(--gray-400);font-size:12px;">is unknown</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~14,672 contacts</strong> &nbsp;·&nbsp; Includes Aircall junk (above)</div>
+    </div>
+
+    <!-- LIST 3 -->
+    <div class="panel" style="border-left:4px solid var(--orange);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">🏷</span>
+            <div class="panel-title" style="margin:0;">[Audit] Missing First Name</div>
+            <span class="pill pill-enrich">ENRICH</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">Contacts with no first name — email personalization will break for these.</div>
+        </div>
+        <button onclick="copyText('[Audit] Missing First Name', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">First name</span>
+          <span style="color:var(--gray-400);font-size:12px;">is unknown</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~10,257 contacts</strong></div>
+    </div>
+
+    <!-- LIST 4 -->
+    <div class="panel" style="border-left:4px solid var(--orange);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">🏷</span>
+            <div class="panel-title" style="margin:0;">[Audit] Missing Last Name</div>
+            <span class="pill pill-enrich">ENRICH</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">Contacts with no last name. Often paired with missing first name.</div>
+        </div>
+        <button onclick="copyText('[Audit] Missing Last Name', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">Last name</span>
+          <span style="color:var(--gray-400);font-size:12px;">is unknown</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~11,186 contacts</strong></div>
+    </div>
+
+    <!-- LIST 5 -->
+    <div class="panel" style="border-left:4px solid var(--purple);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">🏢</span>
+            <div class="panel-title" style="margin:0;">[Audit] No Company Association</div>
+            <span class="pill pill-enrich">ENRICH</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">Contacts not linked to any Company record. Breaks account-based views and reporting.</div>
+        </div>
+        <button onclick="copyText('[Audit] No Company Association', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">Associated Company</span>
+          <span style="color:var(--gray-400);font-size:12px;">is unknown</span>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--gray-400);">💡 In HubSpot, this filter is under <strong>Associations → Company</strong> → "is unknown" (not a regular property filter)</div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~12,801 contacts</strong></div>
+    </div>
+
+    <!-- LIST 6 -->
+    <div class="panel" style="border-left:4px solid var(--orange);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">👤</span>
+            <div class="panel-title" style="margin:0;">[Audit] No Owner Assigned</div>
+            <span class="pill pill-assign">ASSIGN</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">149,370 contacts with no rep owning them — they'll never be worked. Your biggest pipeline leak.</div>
+        </div>
+        <button onclick="copyText('[Audit] No Owner Assigned', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">Contact owner</span>
+          <span style="color:var(--gray-400);font-size:12px;">is unknown</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~149,370 contacts</strong> &nbsp;·&nbsp; <span style="color:var(--red-dark);font-weight:600;">47.7% of your entire database</span></div>
+    </div>
+
+    <!-- LIST 7 -->
+    <div class="panel" style="border-left:4px solid var(--purple);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:18px;">🔄</span>
+            <div class="panel-title" style="margin:0;">[Audit] No Lifecycle Stage</div>
+            <span class="pill pill-segment">SEGMENT</span>
+          </div>
+          <div class="panel-sub" style="margin:0 0 14px;">Contacts with no lifecycle stage set. Can't segment by funnel position — automation and scoring won't work.</div>
+        </div>
+        <button onclick="copyText('[Audit] No Lifecycle Stage', this)" style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);white-space:nowrap;flex-shrink:0;">📋 Copy name</button>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:10px;">Filter criteria</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="background:#fff;border:1px solid var(--gray-300);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;">Lifecycle stage</span>
+          <span style="color:var(--gray-400);font-size:12px;">is unknown</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--gray-400);">Expected count: <strong style="color:var(--gray-700);">~12,258 contacts</strong></div>
+    </div>
+
+  </div><!-- end list cards -->
+
+  <!-- CHECKLIST -->
+  <div class="panel" style="margin-top:24px;">
+    <div class="panel-title">✅ List Creation Checklist</div>
+    <div class="panel-sub">Track which ones you've created — check them off as you go</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;" id="checklist">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">🤖 [Audit] Aircall Junk Contacts</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~9,289</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">📧 [Audit] Missing Email</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~14,672</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">🏷 [Audit] Missing First Name</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~10,257</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">🏷 [Audit] Missing Last Name</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~11,186</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">🏢 [Audit] No Company Association</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~12,801</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">👤 [Audit] No Owner Assigned</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~149,370</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:6px;transition:background 0.1s;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <input type="checkbox" style="width:16px;height:16px;accent-color:var(--hs-orange);cursor:pointer;">
+        <span style="font-size:13px;">🔄 [Audit] No Lifecycle Stage</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400);">~12,258</span>
+      </label>
+    </div>
+  </div>
+
+</div><!-- end lists -->
+
+</div><!-- end roadmap -->
+
+<script>
+// ── TAB SWITCHING ──
+function showTab(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.closest('.tab').classList.add('active');
+}
+
+// ── STEP COMPLETION ──
+const STORAGE_KEY = 'hs_audit_progress_v1';
+
+function getProgress() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) { return {}; }
+}
+
+function saveProgress(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+}
+
+function updateProgressBar() {
+  const steps = document.querySelectorAll('#tab-roadmap .step-item[data-id]');
+  const done = [...steps].filter(s => s.classList.contains('done')).length;
+  const pct = Math.round((done / steps.length) * 100);
+  const fill = document.getElementById('progress-fill');
+  const count = document.getElementById('done-count');
+  if (fill) fill.style.width = pct + '%';
+  if (count) count.textContent = done;
+  // colour the bar green when all done
+  if (fill) fill.style.background = done === steps.length && done > 0
+    ? 'linear-gradient(90deg, var(--green), #16a34a)'
+    : 'linear-gradient(90deg, var(--hs-orange), #ff5733)';
+}
+
+function toggleStep(el) {
+  const id = el.dataset.id;
+  if (!id) return;
+  el.classList.toggle('done');
+  const progress = getProgress();
+  if (el.classList.contains('done')) {
+    progress[id] = true;
+  } else {
+    delete progress[id];
+  }
+  saveProgress(progress);
+  updateProgressBar();
+}
+
+function resetProgress() {
+  if (!confirm('Reset all progress? This cannot be undone.')) return;
+  saveProgress({});
+  document.querySelectorAll('#tab-roadmap .step-item[data-id]').forEach(s => s.classList.remove('done'));
+  updateProgressBar();
+}
+
+function loadProgress() {
+  const progress = getProgress();
+  document.querySelectorAll('#tab-roadmap .step-item[data-id]').forEach(el => {
+    if (progress[el.dataset.id]) el.classList.add('done');
+  });
+  updateProgressBar();
+}
+
+// init on load
+document.addEventListener('DOMContentLoaded', loadProgress);
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✅ Copied!';
+    btn.style.background = 'var(--green-light)';
+    btn.style.color = 'var(--green-dark)';
+    btn.style.borderColor = '#86efac';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background=''; btn.style.color=''; btn.style.borderColor=''; }, 2000);
+  });
+}
+</script>
+</body>
+</html>
