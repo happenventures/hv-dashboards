@@ -1,6 +1,11 @@
 [build]
   publish = "."
 
+[[redirects]]
+  from = "/"
+  to = "/hubspot-contacts-audit.html"
+  status = 301
+
 [[headers]]
   for = "/*"
   [headers.values]
