@@ -252,6 +252,36 @@
   .step-item.done .step-num { background: var(--green-light) !important; color: var(--green-dark) !important; }
   .step-item.done .step-num::after { content: '✓'; }
   .step-item.done .step-num span { display: none; }
+  .step-check-box {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid #d1d5db;
+    flex-shrink: 0;
+    align-self: center;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: transparent;
+    background: white;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .step-item.done .step-check-box {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: white;
+    box-shadow: 0 2px 6px rgba(22,163,74,0.3);
+  }
+  .step-item:not(.done):hover .step-check-box {
+    border-color: #9ca3af;
+    background: #f9fafb;
+  }
   .done-badge {
     display: none; align-items: center; gap: 4px;
     font-size: 10px; font-weight: 700; color: var(--green-dark);
@@ -1023,7 +1053,7 @@
       <div class="phase-dot"><span style="background:var(--blue)"></span> This Month (4)</div>
       <div class="phase-dot"><span style="background:var(--purple)"></span> Phase 2 (3)</div>
     </div>
-    <div class="hint-text">💡 Click any step to mark it complete — progress saves automatically</div>
+    <div class="hint-text">✅ Click a row or its checkbox to mark complete — progress saves automatically in your browser</div>
   </div>
 
   <div class="callout callout-green">
@@ -1461,7 +1491,16 @@ function loadProgress() {
 }
 
 // init on load
-document.addEventListener('DOMContentLoaded', loadProgress);
+document.addEventListener('DOMContentLoaded', function() {
+  // Inject visible checkbox into each step-item
+  document.querySelectorAll('#tab-roadmap .step-item[data-id]').forEach(function(el) {
+    var box = document.createElement('div');
+    box.className = 'step-check-box';
+    box.innerHTML = '&#10003;';
+    el.appendChild(box);
+  });
+  loadProgress();
+});
 
 function copyText(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
