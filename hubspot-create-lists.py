@@ -45,19 +45,30 @@ def load_env():
     return env
 
 # ── Helpers for building filter branches ──────────────────────────────────────
-def prop_filter(property_name, operator, values=None):
+def prop_filter(property_name, has_value=False):
     """
     Build a PROPERTY filter using ALL_PROPERTY operationType.
-    ALL_PROPERTY works for ALL property types (string, enumeration, etc.)
-    and supports HAS_PROPERTY / NOT_HAS_PROPERTY operators.
+    Correct operators: IS_KNOWN (has value) / IS_UNKNOWN (no value).
     """
-    op = {"operationType": "ALL_PROPERTY", "operator": operator}
-    if values:
-        op["values"] = values
     return {
         "filterType": "PROPERTY",
         "property":   property_name,
-        "operation":  op
+        "operation":  {
+            "operationType": "ALL_PROPERTY",
+            "operator":      "IS_KNOWN" if has_value else "IS_UNKNOWN"
+        }
+    }
+
+def num_associations_filter(associated_object_type_id, operator="IS_EQUAL_TO", value="0"):
+    """Filter by number of associated objects (e.g. 0 = no company linked)."""
+    return {
+        "filterType":             "NUM_ASSOCIATIONS",
+        "associatedObjectTypeId": associated_object_type_id,
+        "operation": {
+            "operationType": "NUMBER",
+            "operator":      operator,
+            "value":         value
+        }
     }
 
 def string_eq_filter(property_name, values):
@@ -96,32 +107,32 @@ LISTS = [
     {
         "name": "Audit — No Owner Assigned",
         "filterBranch": or_root([
-            and_branch([prop_filter("hubspot_owner_id", "NOT_HAS_PROPERTY")])
+            and_branch([prop_filter("hubspot_owner_id", has_value=False)])
         ])
     },
     {
-        # associatedcompanyid is the internal property set when a company is linked
+        # 0-2 = Companies object type; filter contacts with 0 associated companies
         "name": "Audit — Missing Company Association",
         "filterBranch": or_root([
-            and_branch([prop_filter("associatedcompanyid", "NOT_HAS_PROPERTY")])
+            and_branch([num_associations_filter("0-2")])
         ])
     },
     {
         "name": "Audit — No Email Address",
         "filterBranch": or_root([
-            and_branch([prop_filter("email", "NOT_HAS_PROPERTY")])
+            and_branch([prop_filter("email", has_value=False)])
         ])
     },
     {
         "name": "Audit — No Job Title",
         "filterBranch": or_root([
-            and_branch([prop_filter("jobtitle", "NOT_HAS_PROPERTY")])
+            and_branch([prop_filter("jobtitle", has_value=False)])
         ])
     },
     {
         "name": "Audit — No Lifecycle Stage",
         "filterBranch": or_root([
-            and_branch([prop_filter("lifecyclestage", "NOT_HAS_PROPERTY")])
+            and_branch([prop_filter("lifecyclestage", has_value=False)])
         ])
     },
     {
@@ -129,12 +140,12 @@ LISTS = [
         "name": "Enrichment Candidates",
         "filterBranch": or_root([
             and_branch([
-                prop_filter("email",    "HAS_PROPERTY"),
-                prop_filter("jobtitle", "NOT_HAS_PROPERTY")
+                prop_filter("email",    has_value=True),
+                prop_filter("jobtitle", has_value=False)
             ]),
             and_branch([
-                prop_filter("email",   "HAS_PROPERTY"),
-                prop_filter("company", "NOT_HAS_PROPERTY")
+                prop_filter("email",   has_value=True),
+                prop_filter("company", has_value=False)
             ])
         ])
     },
