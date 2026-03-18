@@ -57,15 +57,16 @@ LISTS = [
         "name": "Audit — No Owner Assigned",
         "filters": [
             [
-                {"operator": "NOT_HAS_PROPERTY", "property": "hubspot_owner_id"}
+                {"operator": "NOT_HAS_PROPERTY", "property": "hubspot_owner_id", "type": "property"}
             ]
         ]
     },
     {
+        # num_associated_companies is a computed number property (0 = no association)
         "name": "Audit — Missing Company Association",
         "filters": [
             [
-                {"operator": "NOT_HAS_PROPERTY", "property": "associatedcompanyid"}
+                {"operator": "EQ", "property": "num_associated_companies", "value": "0", "type": "property"}
             ]
         ]
     },
@@ -73,7 +74,7 @@ LISTS = [
         "name": "Audit — No Email Address",
         "filters": [
             [
-                {"operator": "NOT_HAS_PROPERTY", "property": "email"}
+                {"operator": "NOT_HAS_PROPERTY", "property": "email", "type": "property"}
             ]
         ]
     },
@@ -81,7 +82,7 @@ LISTS = [
         "name": "Audit — No Job Title",
         "filters": [
             [
-                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle"}
+                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle", "type": "property"}
             ]
         ]
     },
@@ -89,7 +90,7 @@ LISTS = [
         "name": "Audit — No Lifecycle Stage",
         "filters": [
             [
-                {"operator": "NOT_HAS_PROPERTY", "property": "lifecyclestage"}
+                {"operator": "NOT_HAS_PROPERTY", "property": "lifecyclestage", "type": "property"}
             ]
         ]
     },
@@ -99,12 +100,12 @@ LISTS = [
         "name": "Enrichment Candidates",
         "filters": [
             [
-                {"operator": "HAS_PROPERTY",     "property": "email"},
-                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle"}
+                {"operator": "HAS_PROPERTY",     "property": "email",    "type": "property"},
+                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle", "type": "property"}
             ],
             [
-                {"operator": "HAS_PROPERTY",     "property": "email"},
-                {"operator": "NOT_HAS_PROPERTY", "property": "company"}
+                {"operator": "HAS_PROPERTY",     "property": "email",   "type": "property"},
+                {"operator": "NOT_HAS_PROPERTY", "property": "company", "type": "property"}
             ]
         ]
     },
@@ -175,7 +176,7 @@ def main():
             print(f"✅  (ID: {list_id})")
             results.append({"name": lst["name"], "id": list_id, "status": "created"})
         except requests.HTTPError as e:
-            err_body = e.response.text[:200] if e.response else str(e)
+            err_body = e.response.text if e.response else str(e)
             print(f"❌  Failed — {e.response.status_code}: {err_body}")
             results.append({"name": lst["name"], "id": None, "status": "failed", "error": err_body})
         except Exception as e:
