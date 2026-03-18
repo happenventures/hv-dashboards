@@ -343,7 +343,9 @@ def main():
         return
 
     # ── Mark done & write summary ──────────────────────────────────────────────
-    if not args.dry_run:
+    # Only mark done if we naturally exhausted all pages (no timeout/error exit)
+    completed_fully = cp["after"] is None  # None means no next cursor = end of contacts
+    if not args.dry_run and completed_fully:
         cp["done"] = True
     save_checkpoint(cp)
 
