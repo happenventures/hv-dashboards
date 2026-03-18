@@ -119,8 +119,8 @@ def fix_field(field_name, value):
         value = smart_title(value)
         fixes.append("caps→title")
 
-    # Fix 3: All-lowercase job title → Title Case
-    elif field_name == "jobtitle" and is_all_lower(value):
+    # Fix 3: All-lowercase → Title Case (jobtitle, firstname, lastname)
+    elif field_name in ("jobtitle", "firstname", "lastname") and is_all_lower(value):
         value = smart_title(value)
         fixes.append("lower→title")
 
