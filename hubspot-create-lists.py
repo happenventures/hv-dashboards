@@ -13,6 +13,7 @@ Creates 7 dynamic (active) contact lists for ongoing CRM optimization:
   7. Aircall Contacts (sourced via Aircall integration)
 
 Lists are DYNAMIC — they update automatically as contacts change.
+Uses HubSpot Contacts v1 Lists API (stable, widely supported).
 
 Usage:
   python3 hubspot-create-lists.py            # create all lists
@@ -45,189 +46,98 @@ def load_env():
     return env
 
 # ── List Definitions ───────────────────────────────────────────────────────────
-# Each list is a DYNAMIC list that auto-updates as contacts change.
-# filterBranchType AND = all filters must match
-# filterBranchType OR  = any filter must match
+# Uses v1 filter format:
+#   filters = array of groups (outer = OR between groups)
+#   each group = array of conditions (inner = AND within group)
+#
+# Operators: HAS_PROPERTY, NOT_HAS_PROPERTY, EQ, NEQ, CONTAINS, NOT_CONTAINS
 
 LISTS = [
     {
-        "name": "🔴 Audit — No Owner Assigned",
-        "description": "Contacts with no HubSpot owner. Assign owners to improve follow-up.",
-        "filterBranch": {
-            "filterBranchType": "AND",
-            "filterBranches": [],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "hubspot_owner_id",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_NOT_KNOWN"
-                    }
-                }
+        "name": "Audit — No Owner Assigned",
+        "filters": [
+            [
+                {"operator": "NOT_HAS_PROPERTY", "property": "hubspot_owner_id"}
             ]
-        }
+        ]
     },
     {
-        "name": "🔴 Audit — Missing Company Association",
-        "description": "Contacts not linked to any company record in HubSpot.",
-        "filterBranch": {
-            "filterBranchType": "AND",
-            "filterBranches": [],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "associatedcompanyid",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_NOT_KNOWN"
-                    }
-                }
+        "name": "Audit — Missing Company Association",
+        "filters": [
+            [
+                {"operator": "NOT_HAS_PROPERTY", "property": "associatedcompanyid"}
             ]
-        }
+        ]
     },
     {
-        "name": "🔴 Audit — No Email Address",
-        "description": "Contacts with no email. Cannot be emailed or enriched without one.",
-        "filterBranch": {
-            "filterBranchType": "AND",
-            "filterBranches": [],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "email",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_NOT_KNOWN"
-                    }
-                }
+        "name": "Audit — No Email Address",
+        "filters": [
+            [
+                {"operator": "NOT_HAS_PROPERTY", "property": "email"}
             ]
-        }
+        ]
     },
     {
-        "name": "🟡 Audit — No Job Title",
-        "description": "Contacts missing a job title. Useful for enrichment and segmentation.",
-        "filterBranch": {
-            "filterBranchType": "AND",
-            "filterBranches": [],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "jobtitle",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_NOT_KNOWN"
-                    }
-                }
+        "name": "Audit — No Job Title",
+        "filters": [
+            [
+                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle"}
             ]
-        }
+        ]
     },
     {
-        "name": "🟡 Audit — No Lifecycle Stage",
-        "description": "Contacts with no lifecycle stage set. Assign stages for pipeline clarity.",
-        "filterBranch": {
-            "filterBranchType": "AND",
-            "filterBranches": [],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "lifecyclestage",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_NOT_KNOWN"
-                    }
-                }
+        "name": "Audit — No Lifecycle Stage",
+        "filters": [
+            [
+                {"operator": "NOT_HAS_PROPERTY", "property": "lifecyclestage"}
             ]
-        }
+        ]
     },
     {
-        "name": "🟢 Enrichment Candidates",
-        "description": "Contacts with an email but missing job title or company — good targets for enrichment via Clearbit/Apollo.",
-        "filterBranch": {
-            "filterBranchType": "AND",
-            "filterBranches": [
-                {
-                    "filterBranchType": "OR",
-                    "filterBranches": [],
-                    "filters": [
-                        {
-                            "filterType": "PROPERTY",
-                            "property": "jobtitle",
-                            "operation": {
-                                "operationType": "MULTISTRING",
-                                "operator": "IS_NOT_KNOWN"
-                            }
-                        },
-                        {
-                            "filterType": "PROPERTY",
-                            "property": "company",
-                            "operation": {
-                                "operationType": "MULTISTRING",
-                                "operator": "IS_NOT_KNOWN"
-                            }
-                        }
-                    ]
-                }
+        # AND inside each group, OR between groups:
+        # (has email AND no job title) OR (has email AND no company)
+        "name": "Enrichment Candidates",
+        "filters": [
+            [
+                {"operator": "HAS_PROPERTY",     "property": "email"},
+                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle"}
             ],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "email",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_KNOWN"
-                    }
-                }
+            [
+                {"operator": "HAS_PROPERTY",     "property": "email"},
+                {"operator": "NOT_HAS_PROPERTY", "property": "company"}
             ]
-        }
+        ]
     },
     {
-        "name": "⚫ Audit — Aircall Contacts",
-        "description": "Contacts sourced from Aircall integration. Monitor for junk re-imports.",
-        "filterBranch": {
-            "filterBranchType": "OR",
-            "filterBranches": [],
-            "filters": [
-                {
-                    "filterType": "PROPERTY",
-                    "property": "hs_analytics_source_data_1",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_EQUAL_TO",
-                        "values": ["aircall"]
-                    }
-                },
-                {
-                    "filterType": "PROPERTY",
-                    "property": "hs_analytics_source_data_2",
-                    "operation": {
-                        "operationType": "MULTISTRING",
-                        "operator": "IS_EQUAL_TO",
-                        "values": ["aircall"]
-                    }
-                }
+        # OR between the two source data fields
+        "name": "Audit — Aircall Contacts",
+        "filters": [
+            [
+                {"operator": "EQ", "property": "hs_analytics_source_data_1", "value": "aircall"}
+            ],
+            [
+                {"operator": "EQ", "property": "hs_analytics_source_data_2", "value": "aircall"}
             ]
-        }
+        ]
     }
 ]
 
 # ── API ────────────────────────────────────────────────────────────────────────
-def create_list(token, list_def, dry_run=False):
+def create_list(token, name, filters, dry_run=False):
+    if dry_run:
+        return {"listId": "DRY_RUN", "name": name}
+
     payload = {
-        "objectTypeId": "0-1",       # contacts
-        "processingType": "DYNAMIC", # auto-updates
-        "name": list_def["name"],
-        "filterBranch": list_def["filterBranch"]
+        "name":    name,
+        "dynamic": True,
+        "filters": filters
     }
 
-    if dry_run:
-        return {"id": "DRY_RUN", "name": list_def["name"]}
-
     resp = requests.post(
-        "https://api.hubapi.com/crm/v3/lists",
+        "https://api.hubapi.com/contacts/v1/lists",
         headers={
-            "Authorization":  f"Bearer {token}",
-            "Content-Type":   "application/json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type":  "application/json",
         },
         json=payload,
         timeout=30,
@@ -260,13 +170,14 @@ def main():
     for i, lst in enumerate(LISTS, 1):
         print(f"  [{i}/{len(LISTS)}] {lst['name']} ... ", end="", flush=True)
         try:
-            result = create_list(token, lst, dry_run=args.dry_run)
-            list_id = result.get("listId") or result.get("id", "?")
+            result  = create_list(token, lst["name"], lst["filters"], dry_run=args.dry_run)
+            list_id = result.get("listId", "?")
             print(f"✅  (ID: {list_id})")
             results.append({"name": lst["name"], "id": list_id, "status": "created"})
         except requests.HTTPError as e:
-            print(f"❌  Failed — {e.response.status_code}: {e.response.text[:120]}")
-            results.append({"name": lst["name"], "id": None, "status": "failed", "error": str(e)})
+            err_body = e.response.text[:200] if e.response else str(e)
+            print(f"❌  Failed — {e.response.status_code}: {err_body}")
+            results.append({"name": lst["name"], "id": None, "status": "failed", "error": err_body})
         except Exception as e:
             print(f"❌  Error — {e}")
             results.append({"name": lst["name"], "id": None, "status": "error", "error": str(e)})
@@ -276,9 +187,9 @@ def main():
     with open(summary_file, "w") as f:
         json.dump({
             "created_at": datetime.utcnow().isoformat(),
-            "mode": mode,
-            "portal_id": env.get("HUBSPOT_PORTAL_ID", "861426"),
-            "lists": results
+            "mode":       mode,
+            "portal_id":  env.get("HUBSPOT_PORTAL_ID", "861426"),
+            "lists":      results
         }, f, indent=2)
 
     created = sum(1 for r in results if r["status"] == "created")
@@ -294,7 +205,7 @@ def main():
         print("\n  👆  Dry run — no lists were created.")
         print("  Run without --dry-run to create them in HubSpot.\n")
     elif created > 0:
-        print(f"\n  ✅  Lists are live in HubSpot → Contacts → Lists")
+        print(f"\n  ✅  Lists are live — HubSpot → Contacts → Lists")
         print(f"  Results saved to hubspot-lists-summary.json\n")
 
 if __name__ == "__main__":
