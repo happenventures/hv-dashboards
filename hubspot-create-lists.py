@@ -13,7 +13,8 @@ Creates 7 dynamic (active) contact lists for ongoing CRM optimization:
   7. Aircall Contacts (sourced via Aircall integration)
 
 Lists are DYNAMIC — they update automatically as contacts change.
-Uses HubSpot Contacts v1 Lists API (stable, widely supported).
+Uses HubSpot ILS v3 API with correct OR root / AND branch structure.
+Skips lists that already exist (matches by name).
 
 Usage:
   python3 hubspot-create-lists.py            # create all lists
@@ -28,11 +29,9 @@ import requests
 from datetime import datetime
 from pathlib import Path
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
 OUTPUTS_DIR = Path(__file__).parent
 ENV_FILE    = OUTPUTS_DIR / ".env"
 
-# ── Load .env ──────────────────────────────────────────────────────────────────
 def load_env():
     env = {}
     if ENV_FILE.exists():
@@ -45,112 +44,137 @@ def load_env():
     env.update(os.environ)
     return env
 
-# ── List Definitions ───────────────────────────────────────────────────────────
-# Uses v1 filter format:
-#   filters = array of groups (outer = OR between groups)
-#   each group = array of conditions (inner = AND within group)
-#
-# Operators: HAS_PROPERTY, NOT_HAS_PROPERTY, EQ, NEQ, CONTAINS, NOT_CONTAINS
+# ── Helpers for building filter branches ──────────────────────────────────────
+def prop_filter(property_name, operator, values=None):
+    """Build a single PROPERTY filter for ILS v3."""
+    op = {"operationType": "MULTISTRING", "operator": operator}
+    if values:
+        op["values"] = values
+    return {
+        "filterType": "PROPERTY",
+        "property":   property_name,
+        "operation":  op
+    }
 
+def and_branch(filters):
+    """Wrap a list of filters in an AND branch."""
+    return {
+        "filterBranchType": "AND",
+        "filterBranches":   [],
+        "filters":          filters
+    }
+
+def or_root(and_branches):
+    """
+    ILS v3 requires the ROOT branch to be OR.
+    Each condition group goes inside as an AND branch.
+    """
+    return {
+        "filterBranchType": "OR",
+        "filterBranches":   and_branches,
+        "filters":          []
+    }
+
+# ── List Definitions ───────────────────────────────────────────────────────────
 LISTS = [
     {
         "name": "Audit — No Owner Assigned",
-        "filters": [
-            [
-                {"operator": "NOT_HAS_PROPERTY", "property": "hubspot_owner_id", "type": "property"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([prop_filter("hubspot_owner_id", "IS_NOT_KNOWN")])
+        ])
     },
     {
-        # num_associated_companies is a computed number property (0 = no association)
         "name": "Audit — Missing Company Association",
-        "filters": [
-            [
-                {"operator": "EQ", "property": "num_associated_companies", "value": "0", "type": "property"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([prop_filter("num_associated_companies", "IS_EQUAL_TO", ["0"])])
+        ])
     },
     {
         "name": "Audit — No Email Address",
-        "filters": [
-            [
-                {"operator": "NOT_HAS_PROPERTY", "property": "email", "type": "property"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([prop_filter("email", "IS_NOT_KNOWN")])
+        ])
     },
     {
         "name": "Audit — No Job Title",
-        "filters": [
-            [
-                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle", "type": "property"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([prop_filter("jobtitle", "IS_NOT_KNOWN")])
+        ])
     },
     {
         "name": "Audit — No Lifecycle Stage",
-        "filters": [
-            [
-                {"operator": "NOT_HAS_PROPERTY", "property": "lifecyclestage", "type": "property"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([prop_filter("lifecyclestage", "IS_NOT_KNOWN")])
+        ])
     },
     {
-        # AND inside each group, OR between groups:
-        # (has email AND no job title) OR (has email AND no company)
+        # (has email AND no jobtitle) OR (has email AND no company)
         "name": "Enrichment Candidates",
-        "filters": [
-            [
-                {"operator": "HAS_PROPERTY",     "property": "email",    "type": "property"},
-                {"operator": "NOT_HAS_PROPERTY", "property": "jobtitle", "type": "property"}
-            ],
-            [
-                {"operator": "HAS_PROPERTY",     "property": "email",   "type": "property"},
-                {"operator": "NOT_HAS_PROPERTY", "property": "company", "type": "property"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([
+                prop_filter("email",    "IS_KNOWN"),
+                prop_filter("jobtitle", "IS_NOT_KNOWN")
+            ]),
+            and_branch([
+                prop_filter("email",   "IS_KNOWN"),
+                prop_filter("company", "IS_NOT_KNOWN")
+            ])
+        ])
     },
     {
-        # OR between the two source data fields
+        # aircall in source data 1 OR source data 2
         "name": "Audit — Aircall Contacts",
-        "filters": [
-            [
-                {"operator": "EQ", "property": "hs_analytics_source_data_1", "value": "aircall"}
-            ],
-            [
-                {"operator": "EQ", "property": "hs_analytics_source_data_2", "value": "aircall"}
-            ]
-        ]
+        "filterBranch": or_root([
+            and_branch([prop_filter("hs_analytics_source_data_1", "IS_EQUAL_TO", ["aircall"])]),
+            and_branch([prop_filter("hs_analytics_source_data_2", "IS_EQUAL_TO", ["aircall"])])
+        ])
     }
 ]
 
-# ── API ────────────────────────────────────────────────────────────────────────
-def create_list(token, name, filters, dry_run=False):
-    if dry_run:
-        return {"listId": "DRY_RUN", "name": name}
+# ── API helpers ────────────────────────────────────────────────────────────────
+BASE = "https://api.hubapi.com"
 
+def headers(token):
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+def get_existing_lists(token):
+    """Return a dict of {name: listId} for all existing contact lists."""
+    existing = {}
+    offset = None
+    while True:
+        params = {"objectTypeId": "0-1", "count": 250}
+        if offset:
+            params["offset"] = offset
+        resp = requests.get(f"{BASE}/crm/v3/lists", headers=headers(token),
+                            params=params, timeout=30)
+        if not resp.ok:
+            break
+        data = resp.json()
+        for lst in data.get("lists", []):
+            existing[lst.get("name")] = lst.get("listId")
+        if not data.get("hasMore"):
+            break
+        offset = data.get("offset")
+    return existing
+
+def create_list(token, name, filter_branch):
     payload = {
-        "name":    name,
-        "dynamic": True,
-        "filters": filters
+        "objectTypeId":  "0-1",
+        "processingType": "DYNAMIC",
+        "name":          name,
+        "filterBranch":  filter_branch
     }
-
-    resp = requests.post(
-        "https://api.hubapi.com/contacts/v1/lists",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type":  "application/json",
-        },
-        json=payload,
-        timeout=30,
-    )
-    resp.raise_for_status()
+    resp = requests.post(f"{BASE}/crm/v3/lists", headers=headers(token),
+                         json=payload, timeout=30)
+    if not resp.ok:
+        # Print the full response body for diagnosis
+        raise Exception(f"HTTP {resp.status_code}: {resp.text}")
     return resp.json()
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Create HubSpot Audit Lists")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Preview list definitions without creating them")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     env   = load_env()
@@ -167,47 +191,59 @@ def main():
     print(f"  Lists  : {len(LISTS)}")
     print(f"{'═'*62}\n")
 
+    # Fetch existing lists so we can skip duplicates
+    existing = {}
+    if not args.dry_run:
+        print("  Checking existing lists ... ", end="", flush=True)
+        existing = get_existing_lists(token)
+        print(f"found {len(existing)} existing\n")
+
     results = []
     for i, lst in enumerate(LISTS, 1):
-        print(f"  [{i}/{len(LISTS)}] {lst['name']} ... ", end="", flush=True)
-        try:
-            result  = create_list(token, lst["name"], lst["filters"], dry_run=args.dry_run)
-            list_id = result.get("listId", "?")
-            print(f"✅  (ID: {list_id})")
-            results.append({"name": lst["name"], "id": list_id, "status": "created"})
-        except requests.HTTPError as e:
-            err_body = e.response.text if e.response else str(e)
-            print(f"❌  Failed — {e.response.status_code}: {err_body}")
-            results.append({"name": lst["name"], "id": None, "status": "failed", "error": err_body})
-        except Exception as e:
-            print(f"❌  Error — {e}")
-            results.append({"name": lst["name"], "id": None, "status": "error", "error": str(e)})
+        name = lst["name"]
+        print(f"  [{i}/{len(LISTS)}] {name} ... ", end="", flush=True)
 
-    # Save results
+        if args.dry_run:
+            print("✅  (dry run)")
+            results.append({"name": name, "id": "DRY_RUN", "status": "would_create"})
+            continue
+
+        if name in existing:
+            list_id = existing[name]
+            print(f"⏭️   Already exists (ID: {list_id}) — skipped")
+            results.append({"name": name, "id": list_id, "status": "skipped"})
+            continue
+
+        try:
+            result  = create_list(token, name, lst["filterBranch"])
+            list_id = result.get("listId", "?")
+            print(f"✅  Created (ID: {list_id})")
+            results.append({"name": name, "id": list_id, "status": "created"})
+        except Exception as e:
+            print(f"❌  Failed\n      {e}")
+            results.append({"name": name, "id": None, "status": "failed", "error": str(e)})
+
     summary_file = OUTPUTS_DIR / "hubspot-lists-summary.json"
     with open(summary_file, "w") as f:
         json.dump({
             "created_at": datetime.utcnow().isoformat(),
-            "mode":       mode,
-            "portal_id":  env.get("HUBSPOT_PORTAL_ID", "861426"),
-            "lists":      results
+            "mode": mode,
+            "portal_id": env.get("HUBSPOT_PORTAL_ID", "861426"),
+            "lists": results
         }, f, indent=2)
 
-    created = sum(1 for r in results if r["status"] == "created")
-    failed  = sum(1 for r in results if r["status"] != "created")
+    created  = sum(1 for r in results if r["status"] == "created")
+    skipped  = sum(1 for r in results if r["status"] == "skipped")
+    failed   = sum(1 for r in results if r["status"] == "failed")
 
     print(f"\n{'═'*62}")
     print(f"  {'DRY RUN COMPLETE' if args.dry_run else 'DONE'}")
-    print(f"  Created : {created}")
-    print(f"  Failed  : {failed}")
+    print(f"  Created  : {created}")
+    print(f"  Skipped  : {skipped}  (already existed)")
+    print(f"  Failed   : {failed}")
     print(f"{'═'*62}")
-
-    if args.dry_run:
-        print("\n  👆  Dry run — no lists were created.")
-        print("  Run without --dry-run to create them in HubSpot.\n")
-    elif created > 0:
-        print(f"\n  ✅  Lists are live — HubSpot → Contacts → Lists")
-        print(f"  Results saved to hubspot-lists-summary.json\n")
+    if not args.dry_run and (created + skipped) > 0:
+        print(f"\n  ✅  View lists: HubSpot → Contacts → Lists\n")
 
 if __name__ == "__main__":
     main()
