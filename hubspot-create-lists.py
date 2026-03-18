@@ -46,14 +46,30 @@ def load_env():
 
 # ── Helpers for building filter branches ──────────────────────────────────────
 def prop_filter(property_name, operator, values=None):
-    """Build a single PROPERTY filter for ILS v3."""
-    op = {"operationType": "MULTISTRING", "operator": operator}
+    """
+    Build a PROPERTY filter using ALL_PROPERTY operationType.
+    ALL_PROPERTY works for ALL property types (string, enumeration, etc.)
+    and supports HAS_PROPERTY / NOT_HAS_PROPERTY operators.
+    """
+    op = {"operationType": "ALL_PROPERTY", "operator": operator}
     if values:
         op["values"] = values
     return {
         "filterType": "PROPERTY",
         "property":   property_name,
         "operation":  op
+    }
+
+def string_eq_filter(property_name, values):
+    """Build a MULTISTRING IS_EQUAL_TO filter (for specific value matches)."""
+    return {
+        "filterType": "PROPERTY",
+        "property":   property_name,
+        "operation":  {
+            "operationType": "MULTISTRING",
+            "operator":      "IS_EQUAL_TO",
+            "values":        values
+        }
     }
 
 def and_branch(filters):
@@ -80,31 +96,32 @@ LISTS = [
     {
         "name": "Audit — No Owner Assigned",
         "filterBranch": or_root([
-            and_branch([prop_filter("hubspot_owner_id", "IS_NOT_KNOWN")])
+            and_branch([prop_filter("hubspot_owner_id", "NOT_HAS_PROPERTY")])
         ])
     },
     {
+        # associatedcompanyid is the internal property set when a company is linked
         "name": "Audit — Missing Company Association",
         "filterBranch": or_root([
-            and_branch([prop_filter("num_associated_companies", "IS_EQUAL_TO", ["0"])])
+            and_branch([prop_filter("associatedcompanyid", "NOT_HAS_PROPERTY")])
         ])
     },
     {
         "name": "Audit — No Email Address",
         "filterBranch": or_root([
-            and_branch([prop_filter("email", "IS_NOT_KNOWN")])
+            and_branch([prop_filter("email", "NOT_HAS_PROPERTY")])
         ])
     },
     {
         "name": "Audit — No Job Title",
         "filterBranch": or_root([
-            and_branch([prop_filter("jobtitle", "IS_NOT_KNOWN")])
+            and_branch([prop_filter("jobtitle", "NOT_HAS_PROPERTY")])
         ])
     },
     {
         "name": "Audit — No Lifecycle Stage",
         "filterBranch": or_root([
-            and_branch([prop_filter("lifecyclestage", "IS_NOT_KNOWN")])
+            and_branch([prop_filter("lifecyclestage", "NOT_HAS_PROPERTY")])
         ])
     },
     {
@@ -112,21 +129,22 @@ LISTS = [
         "name": "Enrichment Candidates",
         "filterBranch": or_root([
             and_branch([
-                prop_filter("email",    "IS_KNOWN"),
-                prop_filter("jobtitle", "IS_NOT_KNOWN")
+                prop_filter("email",    "HAS_PROPERTY"),
+                prop_filter("jobtitle", "NOT_HAS_PROPERTY")
             ]),
             and_branch([
-                prop_filter("email",   "IS_KNOWN"),
-                prop_filter("company", "IS_NOT_KNOWN")
+                prop_filter("email",   "HAS_PROPERTY"),
+                prop_filter("company", "NOT_HAS_PROPERTY")
             ])
         ])
     },
     {
-        # aircall in source data 1 OR source data 2
-        "name": "Audit — Aircall Contacts",
+        # Aircall v1 list already exists — this creates a v3 dynamic equivalent
+        # Uses MULTISTRING IS_EQUAL_TO which is valid for string properties
+        "name": "Audit — Aircall Contacts (Dynamic)",
         "filterBranch": or_root([
-            and_branch([prop_filter("hs_analytics_source_data_1", "IS_EQUAL_TO", ["aircall"])]),
-            and_branch([prop_filter("hs_analytics_source_data_2", "IS_EQUAL_TO", ["aircall"])])
+            and_branch([string_eq_filter("hs_analytics_source_data_1", ["aircall"])]),
+            and_branch([string_eq_filter("hs_analytics_source_data_2", ["aircall"])])
         ])
     }
 ]
